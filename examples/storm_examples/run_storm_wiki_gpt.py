@@ -2,9 +2,6 @@
 STORM Wiki pipeline powered by GPT-3.5/4 and You.com search engine.
 You need to set up the following environment variables to run this script:
     - OPENAI_API_KEY: OpenAI API key
-    - OPENAI_API_TYPE: OpenAI API type (e.g., 'openai' or 'azure')
-    - AZURE_API_BASE: Azure API base URL if using Azure API
-    - AZURE_API_VERSION: Azure API version if using Azure API
     - YDC_API_KEY: You.com API key; BING_SEARCH_API_KEY: Bing Search API key, SERPER_API_KEY: Serper API key, BRAVE_API_KEY: Brave API key, or TAVILY_API_KEY: Tavily API key
 
 Output will be structured as below
@@ -27,7 +24,7 @@ from knowledge_storm import (
     STORMWikiRunner,
     STORMWikiLMConfigs,
 )
-from knowledge_storm.lm import OpenAIModel, AzureOpenAIModel
+from knowledge_storm.lm import OpenAIModel
 from knowledge_storm.rm import (
     YouRM,
     BingSearch,
@@ -36,13 +33,12 @@ from knowledge_storm.rm import (
     DuckDuckGoSearchRM,
     TavilySearchRM,
     SearXNG,
-    AzureAISearch,
 )
 from knowledge_storm.utils import load_api_key
 
 
 def main(args):
-    load_api_key(toml_file_path="secrets.toml")
+    # load_api_key(toml_file_path="secrets.toml")
     lm_configs = STORMWikiLMConfigs()
     openai_kwargs = {
         "api_key": os.getenv("OPENAI_API_KEY"),
@@ -50,18 +46,11 @@ def main(args):
         "top_p": 0.9,
     }
 
-    ModelClass = (
-        OpenAIModel if os.getenv("OPENAI_API_TYPE") == "openai" else AzureOpenAIModel
-    )
-    # If you are using Azure service, make sure the model name matches your own deployed model name.
-    # The default name here is only used for demonstration and may not match your case.
-    gpt_35_model_name = (
-        "gpt-3.5-turbo" if os.getenv("OPENAI_API_TYPE") == "openai" else "gpt-35-turbo"
-    )
-    gpt_4_model_name = "gpt-4o"
-    if os.getenv("OPENAI_API_TYPE") == "azure":
-        openai_kwargs["api_base"] = os.getenv("AZURE_API_BASE")
-        openai_kwargs["api_version"] = os.getenv("AZURE_API_VERSION")
+    # Always use OpenAI
+    ModelClass = OpenAIModel
+    # Use standard OpenAI model names
+    gpt_35_model_name = "gpt-3.5-turbo"
+    gpt_4_model_name = "gpt-4"
 
     # STORM is a LM system so different components can be powered by different models.
     # For a good balance between cost and quality, you can choose a cheaper/faster model for conv_simulator_lm
@@ -129,21 +118,15 @@ def main(args):
             rm = SearXNG(
                 searxng_api_key=os.getenv("SEARXNG_API_KEY"), k=engine_args.search_top_k
             )
-        case "azure_ai_search":
-            rm = AzureAISearch(
-                azure_ai_search_api_key=os.getenv("AZURE_AI_SEARCH_API_KEY"),
-                k=engine_args.search_top_k,
-            )
         case _:
             raise ValueError(
-                f'Invalid retriever: {args.retriever}. Choose either "bing", "you", "brave", "duckduckgo", "serper", "tavily", "searxng", or "azure_ai_search"'
+                f'Invalid retriever: {args.retriever}. Choose either "bing", "you", "brave", "duckduckgo", "serper", "tavily", or "searxng"'
             )
 
     runner = STORMWikiRunner(engine_args, lm_configs, rm)
 
-    topic = input("Topic: ")
     runner.run(
-        topic=topic,
+        topic=args.topic,
         do_research=args.do_research,
         do_generate_outline=args.do_generate_outline,
         do_generate_article=args.do_generate_article,
@@ -156,6 +139,11 @@ def main(args):
 if __name__ == "__main__":
     parser = ArgumentParser()
     # global arguments
+    parser.add_argument(
+        "topic",
+        type=str,
+        help="Topic to generate content about",
+    )
     parser.add_argument(
         "--output-dir",
         type=str,
@@ -181,7 +169,6 @@ if __name__ == "__main__":
             "duckduckgo",
             "tavily",
             "searxng",
-            "azure_ai_search",
         ],
         help="The search engine API to use for retrieving information.",
     )
