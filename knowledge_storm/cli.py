@@ -132,7 +132,7 @@ Enter a query to generate an article (e.g. \"AI in healthcare\")
         """Show STORM version"""
         print(f"STORM CLI v0.1.0")
 
-    def sanitize_filename(name):
+    def sanitize_filename(self, name):
         """Remove unsafe characters from filenames"""
         safe_name = re.sub(r'[\\/*?:"<>|()]', '', name)
         return safe_name.strip().replace(' ', '_')
