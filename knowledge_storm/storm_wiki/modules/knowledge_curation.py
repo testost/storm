@@ -205,15 +205,27 @@ class TopicExpert(dspy.Module):
         with dspy.settings.context(lm=self.engine, show_guidelines=False):
             # Identify: Break down question into queries.
             queries = self.generate_queries(topic=topic, question=question).queries
+            logging.info(f"Raw queries from generate_queries: {queries}")
+            
             queries = [
                 q.replace("-", "").strip().strip('"').strip('"').strip()
                 for q in queries.split("\n")
             ]
+            logging.info(f"Processed queries after splitting and cleaning: {queries}")
+            
             queries = queries[: self.max_search_queries]
+            logging.info(f"Final queries after limiting to max_search_queries: {queries}")
+            
             # Search
-            searched_results: List[Information] = self.retriever.retrieve(
-                list(set(queries)), exclude_urls=[ground_truth_url]
-            )
+            try:
+                searched_results: List[Information] = self.retriever.retrieve(
+                    list(set(queries)), exclude_urls=[ground_truth_url]
+                )
+                logging.info(f"Retrieved {len(searched_results)} search results")
+            except Exception as e:
+                logging.error(f"Error in retriever.retrieve: {str(e)}")
+                searched_results = []
+
             if len(searched_results) > 0:
                 # Evaluate: Simplify this part by directly using the top 1 snippet.
                 info = ""

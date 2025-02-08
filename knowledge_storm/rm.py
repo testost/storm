@@ -1,8 +1,9 @@
 import logging
 import os
-from typing import Callable, Union, List
-
+from typing import Callable, Union, List, Dict
+import time
 import backoff
+
 import dspy
 import requests
 from dsp import backoff_hdlr, giveup_hdlr
@@ -35,6 +36,14 @@ class YouRM(dspy.Retrieve):
 
         return {"YouRM": usage}
 
+    @backoff.on_exception(
+        backoff.expo,
+        (Exception,),
+        max_time=1000,
+        max_tries=8,
+        on_backoff=backoff_hdlr,
+        giveup=giveup_hdlr,
+    )
     def forward(
         self, query_or_queries: Union[str, List[str]], exclude_urls: List[str] = []
     ):
@@ -46,30 +55,61 @@ class YouRM(dspy.Retrieve):
 
         Returns:
             a list of Dicts, each dict has keys of 'description', 'snippets' (list of strings), 'title', 'url'
+            Returns empty list if rate limited or error occurs.
         """
         queries = (
             [query_or_queries]
             if isinstance(query_or_queries, str)
             else query_or_queries
         )
+        
+        # Check if we've hit the rate limit
+        if hasattr(self, '_last_rate_limit') and (time.time() - self._last_rate_limit) < 60:
+            logging.warning("Still within rate limit window, skipping request")
+            return []
+            
         self.usage += len(queries)
         collected_results = []
+        
         for query in queries:
             try:
                 headers = {"X-API-Key": self.ydc_api_key}
-                results = requests.get(
-                    f"https://api.ydc-index.io/search?query={query}",
+                params = {"query": query, "num_web_results": self.k}
+                response = requests.get(
+                    "https://api.ydc-index.io/search",
                     headers=headers,
-                ).json()
+                    params=params
+                )
+                logging.info(f"Search response status code: {response.status_code}")
+                
+                if response.status_code != 200:
+                    logging.error(f"Search request failed with status {response.status_code}")
+                    logging.error(f"Response content: {response.text}")
+                    continue
+                    
+                results = response.json()
+                
+                # Check for rate limit error
+                if 'error_code' in results and results['error_code'] == 'Too many requests':
+                    logging.warning("Hit rate limit, will pause requests")
+                    self._last_rate_limit = time.time()
+                    return []
+
+                if "hits" not in results:
+                    logging.error(f"No hits found in search results for query {query}")
+                    logging.error(f"Full response: {results}")
+                    continue
 
                 authoritative_results = []
                 for r in results["hits"]:
                     if self.is_valid_source(r["url"]) and r["url"] not in exclude_urls:
                         authoritative_results.append(r)
-                if "hits" in results:
-                    collected_results.extend(authoritative_results[: self.k])
+                logging.info(f"Found {len(authoritative_results)} authoritative results")
+                collected_results.extend(authoritative_results[: self.k])
             except Exception as e:
                 logging.error(f"Error occurs when searching query {query}: {e}")
+                import traceback
+                logging.error(f"Traceback: {traceback.format_exc()}")
 
         return collected_results
 
@@ -125,6 +165,14 @@ class BingSearch(dspy.Retrieve):
 
         return {"BingSearch": usage}
 
+    @backoff.on_exception(
+        backoff.expo,
+        (Exception,),
+        max_time=1000,
+        max_tries=8,
+        on_backoff=backoff_hdlr,
+        giveup=giveup_hdlr,
+    )
     def forward(
         self, query_or_queries: Union[str, List[str]], exclude_urls: List[str] = []
     ):
@@ -303,7 +351,17 @@ class VectorRM(dspy.Retrieve):
         """
         return self.qdrant.client.count(collection_name=self.collection_name)
 
-    def forward(self, query_or_queries: Union[str, List[str]], exclude_urls: List[str]):
+    @backoff.on_exception(
+        backoff.expo,
+        (Exception,),
+        max_time=1000,
+        max_tries=8,
+        on_backoff=backoff_hdlr,
+        giveup=giveup_hdlr,
+    )
+    def forward(
+        self, query_or_queries: Union[str, List[str]], exclude_urls: List[str]
+    ):
         """
         Search in your data for self.k top passages for query or queries.
 
@@ -352,6 +410,14 @@ class StanfordOvalArxivRM(dspy.Retrieve):
 
         return {"StanfordOvalArxivRM": usage}
 
+    @backoff.on_exception(
+        backoff.expo,
+        (Exception,),
+        max_time=1000,
+        max_tries=8,
+        on_backoff=backoff_hdlr,
+        giveup=giveup_hdlr,
+    )
     def _retrieve(self, query: str):
         payload = {"query": query, "num_blocks": self.k, "rerank": self.rerank}
 
@@ -384,6 +450,14 @@ class StanfordOvalArxivRM(dspy.Retrieve):
                 f"Error: Unable to retrieve results. Status code: {response.status_code}"
             )
 
+    @backoff.on_exception(
+        backoff.expo,
+        (Exception,),
+        max_time=1000,
+        max_tries=8,
+        on_backoff=backoff_hdlr,
+        giveup=giveup_hdlr,
+    )
     def forward(
         self, query_or_queries: Union[str, List[str]], exclude_urls: List[str] = []
     ):
@@ -400,6 +474,7 @@ class StanfordOvalArxivRM(dspy.Retrieve):
                 collected_results.extend(results)
             except Exception as e:
                 logging.error(f"Error occurs when searching query {query}: {e}")
+
         return collected_results
 
 
@@ -435,133 +510,150 @@ class SerperRM(dspy.Retrieve):
                 qdr:y str: Date time range for past year.
         """
         super().__init__(k=k)
-        self.usage = 0
-        self.query_params = None
-        self.ENABLE_EXTRA_SNIPPET_EXTRACTION = ENABLE_EXTRA_SNIPPET_EXTRACTION
+        try:
+            import requests
+        except ImportError as err:
+            raise ImportError("Serper requires `pip install requests`.") from err
+
+        if not serper_search_api_key and not os.environ.get("SERPER_API_KEY"):
+            raise RuntimeError(
+                "You must supply a serper_search_api_key param or set environment variable SERPER_API_KEY"
+            )
+
+        elif serper_search_api_key:
+            self.serper_search_api_key = serper_search_api_key
+
+        else:
+            self.serper_search_api_key = os.environ["SERPER_API_KEY"]
+
+        self.k = k
         self.webpage_helper = WebPageHelper(
             min_char_count=min_char_count,
             snippet_chunk_size=snippet_chunk_size,
             max_thread_num=webpage_helper_max_threads,
         )
 
-        if query_params is None:
-            self.query_params = {"num": k, "autocorrect": True, "page": 1}
-        else:
-            self.query_params = query_params
-            self.query_params.update({"num": k})
-        self.serper_search_api_key = serper_search_api_key
-        if not self.serper_search_api_key and not os.environ.get("SERPER_API_KEY"):
-            raise RuntimeError(
-                "You must supply a serper_search_api_key param or set environment variable SERPER_API_KEY"
-            )
+        self.usage = 0
 
-        elif self.serper_search_api_key:
-            self.serper_search_api_key = serper_search_api_key
-
-        else:
-            self.serper_search_api_key = os.environ["SERPER_API_KEY"]
-
-        self.base_url = "https://google.serper.dev"
-
-    def serper_runner(self, query_params):
-        self.search_url = f"{self.base_url}/search"
-
-        headers = {
+        # Serper API endpoint
+        self.serper_endpoint = "https://google.serper.dev/search"
+        self.headers = {
             "X-API-KEY": self.serper_search_api_key,
-            "Content-Type": "application/json",
+            "Content-Type": "application/json"
         }
 
-        response = requests.request(
-            "POST", self.search_url, headers=headers, json=query_params
-        )
+        self.ENABLE_EXTRA_SNIPPET_EXTRACTION = ENABLE_EXTRA_SNIPPET_EXTRACTION
 
-        if response == None:
-            raise RuntimeError(
-                f"Error had occurred while running the search process.\n Error is {response.reason}, had failed with status code {response.status_code}"
-            )
-
-        return response.json()
+        # If not None, is_valid_source shall be a function that takes a URL and returns a boolean.
+        if query_params:
+            self.query_params = query_params
+        else:
+            self.query_params = {"num": k, "autocorrect": True, "page": 1}
 
     def get_usage_and_reset(self):
         usage = self.usage
         self.usage = 0
         return {"SerperRM": usage}
 
-    def forward(self, query_or_queries: Union[str, List[str]], exclude_urls: List[str]):
-        """
-        Calls the API and searches for the query passed in.
+    @backoff.on_exception(
+        backoff.expo,
+        (Exception,),
+        max_time=1000,
+        max_tries=8,
+        on_backoff=backoff_hdlr,
+        giveup=giveup_hdlr,
+    )
+    def serper_runner(self, query_params):
+        response = requests.post(
+            self.serper_endpoint,
+            headers=self.headers,
+            json=query_params
+        )
 
+        if not response.ok:
+            raise RuntimeError(
+                f"Error occurred while running the search process.\nError is {response.reason}, failed with status code {response.status_code}"
+            )
+
+        return response.json()
+
+    @backoff.on_exception(
+        backoff.expo,
+        (Exception,),
+        max_time=1000,
+        max_tries=8,
+        on_backoff=backoff_hdlr,
+        giveup=giveup_hdlr,
+    )
+    def forward(
+        self, query_or_queries: Union[str, List[str]], exclude_urls: List[str] = None
+    ) -> List[Dict]:
+        """
+        Search in your data for self.k top passages for query or queries.
 
         Args:
             query_or_queries (Union[str, List[str]]): The query or queries to search for.
-            exclude_urls (List[str]): Dummy parameter to match the interface. Does not have any effect.
+            exclude_urls (List[str], optional): URLs to exclude from results. Defaults to None.
 
         Returns:
-            a list of dictionaries, each dictionary has keys of 'description', 'snippets' (list of strings), 'title', 'url'
+            List[Dict]: List of dictionaries containing search results.
         """
-        queries = (
-            [query_or_queries]
-            if isinstance(query_or_queries, str)
-            else query_or_queries
-        )
+        if exclude_urls is None:
+            exclude_urls = []
 
-        self.usage += len(queries)
-        self.results = []
+        # Handle None or empty queries
+        if query_or_queries is None:
+            return []
+
         collected_results = []
-        for query in queries:
-            if query == "Queries:":
-                continue
-            query_params = self.query_params
-
-            # All available parameters can be found in the playground: https://serper.dev/playground
-            # Sets the json value for query to be the query that is being parsed.
-            query_params["q"] = query
-
-            # Sets the type to be search, can be images, video, places, maps etc that Google provides.
-            query_params["type"] = "search"
-
-            self.result = self.serper_runner(query_params)
-            self.results.append(self.result)
-
-        # Array of dictionaries that will be used by Storm to create the jsons
-        collected_results = []
-
-        if self.ENABLE_EXTRA_SNIPPET_EXTRACTION:
-            urls = []
-            for result in self.results:
-                organic_results = result.get("organic", [])
-                for organic in organic_results:
-                    url = organic.get("link")
-                    if url:
-                        urls.append(url)
-            valid_url_to_snippets = self.webpage_helper.urls_to_snippets(urls)
+        if isinstance(query_or_queries, str):
+            # Handle empty string queries
+            if not query_or_queries.strip():
+                return []
+            queries = [query_or_queries]
         else:
-            valid_url_to_snippets = {}
+            # Handle list of queries
+            if not query_or_queries:  # empty list
+                return []
+            queries = [q for q in query_or_queries if q is not None and q.strip()]
+            if not queries:  # all queries were None or empty
+                return []
 
-        for result in self.results:
+        for query in queries:
             try:
-                # An array of dictionaries that contains the snippets, title of the document and url that will be used.
-                organic_results = result.get("organic")
-                knowledge_graph = result.get("knowledgeGraph")
-                for organic in organic_results:
-                    snippets = [organic.get("snippet")]
-                    if self.ENABLE_EXTRA_SNIPPET_EXTRACTION:
-                        snippets.extend(
-                            valid_url_to_snippets.get(url, {}).get("snippets", [])
-                        )
-                    collected_results.append(
-                        {
-                            "snippets": snippets,
-                            "title": organic.get("title"),
-                            "url": organic.get("link"),
-                            "description": (
-                                knowledge_graph.get("description")
-                                if knowledge_graph is not None
-                                else ""
-                            ),
-                        }
-                    )
-            except:
+                # Initialize search parameters with base query params
+                search_params = self.query_params.copy()
+                search_params["q"] = query
+                search_params["api_key"] = self.serper_search_api_key
+
+                # Add logging
+                logging.info(f"Searching with query: {query}")
+                logging.info(f"Search params: {search_params}")
+
+                # Get search results
+                result = self.serper_runner(search_params)
+
+                # Add logging
+                logging.info(f"Search result keys: {result.keys()}")
+                logging.info(f"Organic results count: {len(result.get('organic', []))}")
+
+                # Extract organic results
+                organic_results = result.get("organic", [])
+                knowledge_graph = result.get("knowledge_graph", {})
+
+                # Process each result
+                for item in organic_results[:self.k]:
+                    if item.get("link") not in exclude_urls:
+                        collected_results.append({
+                            "title": item.get("title", ""),
+                            "url": item.get("link", ""),
+                            "snippets": [item.get("snippet", "")],
+                            "description": knowledge_graph.get("description", item.get("snippet", ""))
+                        })
+            except Exception as e:
+                # Add error logging
+                logging.error(f"Error in SerperRM.forward: {str(e)}")
+                logging.error(f"Query that caused error: {query}")
                 continue
 
         return collected_results
@@ -594,6 +686,14 @@ class BraveRM(dspy.Retrieve):
 
         return {"BraveRM": usage}
 
+    @backoff.on_exception(
+        backoff.expo,
+        (Exception,),
+        max_time=1000,
+        max_tries=8,
+        on_backoff=backoff_hdlr,
+        giveup=giveup_hdlr,
+    )
     def forward(
         self, query_or_queries: Union[str, List[str]], exclude_urls: List[str] = []
     ):
@@ -676,6 +776,14 @@ class SearXNG(dspy.Retrieve):
         self.usage = 0
         return {"SearXNG": usage}
 
+    @backoff.on_exception(
+        backoff.expo,
+        (Exception,),
+        max_time=1000,
+        max_tries=8,
+        on_backoff=backoff_hdlr,
+        giveup=giveup_hdlr,
+    )
     def forward(
         self, query_or_queries: Union[str, List[str]], exclude_urls: List[str] = []
     ):
@@ -799,6 +907,14 @@ class DuckDuckGoSearchRM(dspy.Retrieve):
         )
         return results
 
+    @backoff.on_exception(
+        backoff.expo,
+        (Exception,),
+        max_time=1000,
+        max_tries=8,
+        on_backoff=backoff_hdlr,
+        giveup=giveup_hdlr,
+    )
     def forward(
         self, query_or_queries: Union[str, List[str]], exclude_urls: List[str] = []
     ):
@@ -917,6 +1033,14 @@ class TavilySearchRM(dspy.Retrieve):
         self.usage = 0
         return {"TavilySearchRM": usage}
 
+    @backoff.on_exception(
+        backoff.expo,
+        (Exception,),
+        max_time=1000,
+        max_tries=8,
+        on_backoff=backoff_hdlr,
+        giveup=giveup_hdlr,
+    )
     def forward(
         self, query_or_queries: Union[str, List[str]], exclude_urls: List[str] = []
     ):
@@ -1045,6 +1169,14 @@ class GoogleSearch(dspy.Retrieve):
         self.usage = 0
         return {"GoogleSearch": usage}
 
+    @backoff.on_exception(
+        backoff.expo,
+        (Exception,),
+        max_time=1000,
+        max_tries=8,
+        on_backoff=backoff_hdlr,
+        giveup=giveup_hdlr,
+    )
     def forward(
         self, query_or_queries: Union[str, List[str]], exclude_urls: List[str] = []
     ):
@@ -1089,7 +1221,6 @@ class GoogleSearch(dspy.Retrieve):
                             # "snippet": item.get("snippet", ""),  # Google search snippet is very short.
                             "description": item.get("snippet", ""),
                         }
-
             except Exception as e:
                 logging.error(f"Error occurred while searching query {query}: {e}")
 
@@ -1187,6 +1318,14 @@ class AzureAISearch(dspy.Retrieve):
 
         return {"AzureAISearch": usage}
 
+    @backoff.on_exception(
+        backoff.expo,
+        (Exception,),
+        max_time=1000,
+        max_tries=8,
+        on_backoff=backoff_hdlr,
+        giveup=giveup_hdlr,
+    )
     def forward(
         self, query_or_queries: Union[str, List[str]], exclude_urls: List[str] = []
     ):

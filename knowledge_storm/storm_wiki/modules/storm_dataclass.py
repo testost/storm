@@ -2,7 +2,6 @@ import copy
 import re
 from collections import OrderedDict
 from typing import Union, Optional, Any, List, Tuple, Dict
-
 import numpy as np
 from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
@@ -119,6 +118,10 @@ class StormInformationTable(InformationTable):
     def retrieve_information(
         self, queries: Union[List[str], str], search_top_k
     ) -> List[Information]:
+        # Check if there are any snippets to search through
+        if not self.collected_snippets:
+            return []
+            
         selected_urls = []
         selected_snippets = []
         if type(queries) is str:
@@ -130,6 +133,10 @@ class StormInformationTable(InformationTable):
             for i in sorted_indices[-search_top_k:][::-1]:
                 selected_urls.append(self.collected_urls[i])
                 selected_snippets.append(self.collected_snippets[i])
+
+        # If no relevant snippets found, return empty list
+        if not selected_urls:
+            return []
 
         url_to_snippets = {}
         for url, snippet in zip(selected_urls, selected_snippets):
@@ -368,6 +375,25 @@ class StormArticle(Article):
         # Adjust the initial level based on whether root is included and hashtags are added
         for child in self.root.children:
             preorder_traverse(child, level=1)
+        
+        # Add references section if there are any references
+        if self.reference and self.reference["url_to_info"]:
+            result.append("## References")
+            # Sort references by their unified index
+            sorted_refs = []
+            for url, info in self.reference["url_to_info"].items():
+                if url in self.reference["url_to_unified_index"]:
+                    sorted_refs.append((self.reference["url_to_unified_index"][url], info))
+            
+            # Sort by index
+            sorted_refs.sort(key=lambda x: x[0])
+            
+            # Add each reference
+            ref_texts = []
+            for idx, info in sorted_refs:
+                ref_texts.append(f"[{idx}] {info.title}. {info.url}")
+            result.append("\n".join(ref_texts))
+        
         result = [i.strip() for i in result if i is not None and i.strip()]
         return "\n\n".join(result)
 

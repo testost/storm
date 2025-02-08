@@ -292,26 +292,39 @@ class Retriever:
         to_return = []
 
         def process_query(q):
-            retrieved_data_list = self.rm(
-                query_or_queries=[q], exclude_urls=exclude_urls
-            )
-            local_to_return = []
-            for data in retrieved_data_list:
-                for i in range(len(data["snippets"])):
-                    # STORM generate the article with citations. We do not consider multi-hop citations.
-                    # Remove citations in the source to avoid confusion.
-                    data["snippets"][i] = ArticleTextProcessing.remove_citations(
-                        data["snippets"][i]
-                    )
-                storm_info = Information.from_dict(data)
-                storm_info.meta["query"] = q
-                local_to_return.append(storm_info)
-            return local_to_return
+            try:
+                logging.info(f"Processing query in Retriever: {q}")
+                retrieved_data_list = self.rm(
+                    query_or_queries=[q], exclude_urls=exclude_urls
+                )
+                logging.info(f"Retrieved data list length: {len(retrieved_data_list)}")
+                
+                local_to_return = []
+                for data in retrieved_data_list:
+                    logging.info(f"Processing data with keys: {data.keys()}")
+                    for i in range(len(data["snippets"])):
+                        # STORM generate the article with citations. We do not consider multi-hop citations.
+                        # Remove citations in the source to avoid confusion.
+                        data["snippets"][i] = ArticleTextProcessing.remove_citations(
+                            data["snippets"][i]
+                        )
+                    storm_info = Information.from_dict(data)
+                    storm_info.meta["query"] = q
+                    local_to_return.append(storm_info)
+                return local_to_return
+            except Exception as e:
+                logging.error(f"Error in process_query: {str(e)}")
+                return []
 
         with concurrent.futures.ThreadPoolExecutor(
             max_workers=self.max_thread
         ) as executor:
-            results = list(executor.map(process_query, queries))
+            try:
+                results = list(executor.map(process_query, queries))
+                logging.info(f"Retrieved results for {len(results)} queries")
+            except Exception as e:
+                logging.error(f"Error in ThreadPoolExecutor: {str(e)}")
+                results = []
 
         for result in results:
             to_return.extend(result)
