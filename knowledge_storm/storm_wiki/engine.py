@@ -15,6 +15,7 @@ from .modules.persona_generator import StormPersonaGenerator
 from .modules.storm_dataclass import StormInformationTable, StormArticle
 from ..interface import Engine, LMConfigs, Retriever
 from ..lm import LitellmModel
+from ..rm import SerperRM
 from ..utils import FileIOHelper, makeStringRed, truncate_filename
 
 
@@ -62,10 +63,10 @@ class STORMWikiLMConfigs(LMConfigs):
         }
         if openai_type and openai_type == "openai":
             self.conv_simulator_lm = LitellmModel(
-                model="gpt-4o-mini-2024-07-18", max_tokens=500, **openai_kwargs
+                model="gpt-4o-mini", max_tokens=500, **openai_kwargs
             )
             self.question_asker_lm = LitellmModel(
-                model="gpt-4o-mini-2024-07-18", max_tokens=500, **openai_kwargs
+                model="gpt-4o-mini", max_tokens=500, **openai_kwargs
             )
             # 1/12/2024: Update gpt-4 to gpt-4-1106-preview. (Currently keep the original setup when using azure.)
             self.outline_gen_lm = LitellmModel(
@@ -79,10 +80,10 @@ class STORMWikiLMConfigs(LMConfigs):
             )
         elif openai_type and openai_type == "azure":
             self.conv_simulator_lm = LitellmModel(
-                model="azure/gpt-4o-mini-2024-07-18", max_tokens=500, **openai_kwargs
+                model="azure/gpt-4o-mini", max_tokens=500, **openai_kwargs
             )
             self.question_asker_lm = LitellmModel(
-                model="azure/gpt-4o-mini-2024-07-18",
+                model="azure/gpt-4o-mini",
                 max_tokens=500,
                 **azure_kwargs,
                 model_type="chat",
@@ -92,13 +93,13 @@ class STORMWikiLMConfigs(LMConfigs):
                 model="azure/gpt-4o", max_tokens=400, **azure_kwargs, model_type="chat"
             )
             self.article_gen_lm = LitellmModel(
-                model="azure/gpt-4o-mini-2024-07-18",
+                model="azure/gpt-4o-mini",
                 max_tokens=700,
                 **azure_kwargs,
                 model_type="chat",
             )
             self.article_polish_lm = LitellmModel(
-                model="azure/gpt-4o-mini-2024-07-18",
+                model="azure/gpt-4o-mini",
                 max_tokens=4000,
                 **azure_kwargs,
                 model_type="chat",
@@ -439,3 +440,20 @@ class STORMWikiRunner(Engine):
             self.run_article_polishing_module(
                 draft_article=draft_article, remove_duplicate=remove_duplicate
             )
+
+    def init_rm(self):
+        """Initialize retrieval module."""
+        return SerperRM(
+            k=3,
+            min_char_count=150,
+            snippet_chunk_size=1000,
+            webpage_helper_max_threads=10,
+            ENABLE_EXTRA_SNIPPET_EXTRACTION=True,  # Get more detailed snippets
+            query_params={
+                "num": 3,  # Number of results per page
+                "autocorrect": True,  # Enable query autocorrection
+                "page": 1,  # First page of results
+                "engine": "google",  # Use Google search engine
+                "type": "search"  # Web search
+            }
+        )

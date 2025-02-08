@@ -127,7 +127,13 @@ def main(args):
         case "serper":
             rm = SerperRM(
                 serper_search_api_key=os.getenv("SERPER_API_KEY"),
-                query_params={"autocorrect": True, "num": 10, "page": 1},
+                query_params={
+                    "autocorrect": True,
+                    "num": 10,
+                    "page": 1,
+                    "engine": "google",
+                    "type": "search"
+                },
             )
         case "tavily":
             rm = TavilySearchRM(
