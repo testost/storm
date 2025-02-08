@@ -16,11 +16,14 @@ def main():
     if "first_run" not in st.session_state:
         st.session_state["first_run"] = True
 
-    # set api keys from secrets
+    # set api keys from environment variables
     if st.session_state["first_run"]:
-        for key, value in st.secrets.items():
-            if type(value) == str:
-                os.environ[key] = value
+        if not os.environ.get("OPENAI_API_KEY"):
+            st.error("OPENAI_API_KEY environment variable is not set")
+            st.stop()
+        if not os.environ.get("YDC_API_KEY"):
+            st.error("YDC_API_KEY environment variable is not set")
+            st.stop()
 
     # initialize session_state
     if "selected_article_index" not in st.session_state:

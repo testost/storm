@@ -582,12 +582,15 @@ def set_storm_runner():
     # configure STORM runner
     llm_configs = STORMWikiLMConfigs()
     llm_configs.init_openai_model(
-        openai_api_key=st.secrets["OPENAI_API_KEY"], openai_type="openai"
+        openai_api_key=os.environ.get("OPENAI_API_KEY"),
+        openai_type="openai",
+        api_base="https://api.openai.com/v1",
+        api_version="2023-05-15",
     )
     llm_configs.set_question_asker_lm(
         OpenAIModel(
             model="gpt-4-1106-preview",
-            api_key=st.secrets["OPENAI_API_KEY"],
+            api_key=os.environ.get("OPENAI_API_KEY"),
             api_provider="openai",
             max_tokens=500,
             temperature=1.0,
@@ -596,13 +599,18 @@ def set_storm_runner():
     )
     engine_args = STORMWikiRunnerArguments(
         output_dir=current_working_dir,
+        generate_combined_output=True,  # Enable combined output for Streamlit
+        combined_output_format='markdown',  # Use markdown format
+        max_thread_num=10,
         max_conv_turn=3,
         max_perspective=3,
+        max_search_queries_per_turn=3,
+        disable_perspective=False,
         search_top_k=3,
-        retrieve_top_k=5,
+        retrieve_top_k=3,
     )
 
-    rm = YouRM(ydc_api_key=st.secrets["YDC_API_KEY"], k=engine_args.search_top_k)
+    rm = YouRM(ydc_api_key=os.environ.get("YDC_API_KEY"), k=engine_args.search_top_k)
 
     runner = STORMWikiRunner(engine_args, llm_configs, rm)
     st.session_state["runner"] = runner

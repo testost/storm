@@ -1,0 +1,26 @@
+[1] https://taloushallintoliitto.fi/tietopankki/vinkkilista-yrittajalle/yritystulon-paaomatulo-osuuden-valinta/
+[2] https://www.zervant.com/fi/blogi/yritysmuotojen-vertailu/
+[3] https://www.ukko.fi/yrittajyyskoulu/toiminimen-verotus-pahkinankuoressa/
+[4] https://yrityksen-perustaminen.net/toiminimen-verotus/
+[5] https://ek.fi/ajankohtaista/uutiset/verotuksen-muutoksia-1-1-2024-alkaen/
+[6] https://portti.kansallisarkisto.fi/fi/aineisto-oppaat/verotus
+[7] https://www.credigo.fi/sanakirja/paaomatulo/
+[8] https://bisnes.fi/henkiloyhtion-verotus/
+[9] https://www.vero.fi/yritykset-ja-yhteisot/verot-ja-maksut/avoin-yhtio-ja-kommandiittiyhtio/tuloverotus/
+[10] https://vm.fi/yksityisen-yrittajan-ja-maataloudenharjoittajan-verotus
+[11] https://kauppasanomat.fi/osakkeiden-verotus/
+[12] https://www.taloussuomi.fi/verotus/ansiotulo-vai-paaomatulo
+[13] https://tilisanomat.fi/koulut/verokoulu-koulut/yksityisen-elinkeinonharjoittajan-verotus
+[14] https://www.vero.fi/tietoa-verohallinnosta/uutishuone/lehdist%C3%B6tiedotteet/2025/yhteisojen-vuosien-2022-ja-2023-tuloverotukseen-tehtiin-viime-vuonna-yli-10-000-muutosta--verohallinto-julkaisee-muutokset-avoimena-datana-nyt-ensimmaisen-kerran
+[15] https://adcount.fi/blogi/vahennyskelpoiset-kulut
+[16] https://www.etasku.fi/blogi/yrittajan-verovahennykset/
+[17] https://www.accountor.com/fi/finland/artikla/yritysverotus-vuonna-2024
+[18] https://www.op.fi/en/corporate-customers/customer-relationship/financial-coaching-for-entrepreneurs/taxation/taxation-of-private-traders
+[19] https://www.suomi.fi/yritykselle/talouden-hallinta-ja-verotus/yritysverotus
+[20] https://fi.m.wikipedia.org/wiki/Verotuksen_historia_Suomessa
+[21] https://fi.wikipedia.org/wiki/Verotuksen_historia_Suomessa
+[22] https://ilona.works/taloushallinto-laskutus/kaikki-pienyrittajan-verotuksesta/
+[23] https://www.vero.fi/yritykset-ja-yhteisot/verot-ja-maksut/avoin-yhtio-ja-kommandiittiyhtio/tuloverotus/nettovarallisuus/
+[24] https://www.yrittajat.fi/tietopankki/verot-ja-talous/yritysverotus/
+
+generated with: jq -r '.url_to_unified_index | to_entries | sort_by(.value) | .[] | "[\(.value)] \(.key)"' url_to_info.json > url_to_info.txt
