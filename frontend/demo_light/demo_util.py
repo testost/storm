@@ -581,8 +581,13 @@ def set_storm_runner():
 
     # configure STORM runner
     llm_configs = STORMWikiLMConfigs()
+    openai_api_key = os.environ.get("OPENAI_API_KEY")
+    if not openai_api_key:
+        st.error("OPENAI_API_KEY environment variable is not set")
+        st.stop()
+
     llm_configs.init_openai_model(
-        openai_api_key=os.environ.get("OPENAI_API_KEY"),
+        openai_api_key=openai_api_key,
         openai_type="openai",
         api_base="https://api.openai.com/v1",
         api_version="2023-05-15",
@@ -590,7 +595,7 @@ def set_storm_runner():
     llm_configs.set_question_asker_lm(
         OpenAIModel(
             model="gpt-4-1106-preview",
-            api_key=os.environ.get("OPENAI_API_KEY"),
+            api_key=openai_api_key,
             api_provider="openai",
             max_tokens=500,
             temperature=1.0,
@@ -610,7 +615,12 @@ def set_storm_runner():
         retrieve_top_k=3,
     )
 
-    rm = YouRM(ydc_api_key=os.environ.get("YDC_API_KEY"), k=engine_args.search_top_k)
+    ydc_api_key = os.environ.get("YDC_API_KEY")
+    if not ydc_api_key:
+        st.error("YDC_API_KEY environment variable is not set")
+        st.stop()
+
+    rm = YouRM(ydc_api_key=ydc_api_key, k=engine_args.search_top_k)
 
     runner = STORMWikiRunner(engine_args, llm_configs, rm)
     st.session_state["runner"] = runner
