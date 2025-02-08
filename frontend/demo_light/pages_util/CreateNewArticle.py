@@ -21,8 +21,12 @@ def handle_not_started():
                 DemoUIHelper.st_markdown_adjust_size(
                     content="Enter the topic you want to learn in depth:", font_size=18
                 )
-                st.session_state["page3_topic"] = st.text_input(
-                    label="page3_topic", label_visibility="collapsed"
+                st.session_state["page3_topic"] = st.text_area(
+                    label="page3_topic",
+                    label_visibility="collapsed",
+                    height=100,
+                    max_chars=1000,  # Set a high limit that's well within LLM context lengths
+                    help="Describe the topic you want to research. You can provide additional context or specific aspects you're interested in."
                 )
                 pass_appropriateness_check = True
 
@@ -100,62 +104,101 @@ def handle_pre_writing():
 
 def handle_final_writing():
     if st.session_state["page3_write_article_state"] == "final_writing":
-        # polish final article
-        with st.status(
-            "Now I will connect the information I found for your reference. (This may take 4-5 minutes.)"
-        ) as status:
-            st.info(
-                "Now I will connect the information I found for your reference. (This may take 4-5 minutes.)"
-            )
-            st.session_state["runner"].run(
-                topic=st.session_state["page3_topic"],
-                do_research=False,
-                do_generate_outline=False,
-                do_generate_article=True,
-                do_polish_article=True,
-                remove_duplicate=False,
-            )
-            # finish the session
-            st.session_state["runner"].post_run()
-
-            # Generate combined markdown file with references
-            article_dir = os.path.join(
-                st.session_state["page3_current_working_dir"],
-                st.session_state["page3_topic_name_truncated"]
-            )
-            polished_article_path = os.path.join(article_dir, "storm_gen_article_polished.txt")
-            url_to_info_path = os.path.join(article_dir, "url_to_info.json")
+        # Initialize error counter in session state if not exists
+        if "page3_error_count" not in st.session_state:
+            st.session_state["page3_error_count"] = 0
+            st.session_state["page3_last_error_time"] = time.time()
             
-            if os.path.exists(polished_article_path) and os.path.exists(url_to_info_path):
-                article_text = DemoFileIOHelper.read_txt_file(polished_article_path)
-                url_to_info = DemoFileIOHelper.read_json_file(url_to_info_path)
-                
-                # Add spaces between adjacent citations (e.g., [1][2] -> [1] [2])
-                article_text = re.sub(r'\](\[\d+\])', r'] \1', article_text)
-                
-                # Generate bibliography in markdown format
-                bibliography = DemoTextProcessingHelper.construct_bibliography_from_url_to_info(url_to_info)
-                
-                # Check if article already has a References section
-                if "# References" not in article_text:
-                    combined_content = f"{article_text}\n\n# References\n\n{bibliography}"
-                else:
-                    # Replace existing References section
-                    sections = article_text.split("# References")
-                    combined_content = f"{sections[0].rstrip()}\n\n# References\n\n{bibliography}"
-                
-                # Write combined markdown file
-                combined_md_path = os.path.join(article_dir, "storm_gen_article_full_with_ref.md")
-                with open(combined_md_path, "w") as f:
-                    f.write(combined_content)
+        # Reset error count if more than 30 seconds have passed
+        if time.time() - st.session_state["page3_last_error_time"] > 30:
+            st.session_state["page3_error_count"] = 0
+            
+        with st.status("Connecting information and generating final article...") as status:
+            try:
+                # Run STORM pipeline
+                st.session_state["runner"].run(
+                    topic=st.session_state["page3_topic"],
+                    do_research=False,
+                    do_generate_outline=False,
+                    do_generate_article=True,
+                    do_polish_article=True,
+                    remove_duplicate=False,
+                )
+                st.session_state["runner"].post_run()
 
-            # update status bar
-            st.session_state["page3_write_article_state"] = "prepare_to_show_result"
-            status.update(label="information snythesis complete!", state="complete")
+                # Generate combined markdown file
+                article_dir = os.path.join(
+                    st.session_state["page3_current_working_dir"],
+                    st.session_state["page3_topic_name_truncated"]
+                )
+                polished_article_path = os.path.join(article_dir, "storm_gen_article_polished.txt")
+                url_to_info_path = os.path.join(article_dir, "url_to_info.json")
+                
+                if os.path.exists(polished_article_path) and os.path.exists(url_to_info_path):
+                    article_text = DemoFileIOHelper.read_txt_file(polished_article_path)
+                    url_to_info = DemoFileIOHelper.read_json_file(url_to_info_path)
+                    
+                    # Add spaces between citations
+                    article_text = re.sub(r'\](\[\d+\])', r'] \1', article_text)
+                    
+                    # Generate bibliography
+                    bibliography = DemoTextProcessingHelper.construct_bibliography_from_url_to_info(url_to_info)
+                    
+                    # Combine content
+                    if "# References" not in article_text:
+                        combined_content = f"{article_text}\n\n# References\n\n{bibliography}"
+                    else:
+                        sections = article_text.split("# References")
+                        combined_content = f"{sections[0].rstrip()}\n\n# References\n\n{bibliography}"
+                    
+                    # Save combined markdown
+                    combined_md_path = os.path.join(
+                        st.session_state["page3_current_working_dir"],
+                        st.session_state["page3_topic_name_truncated"],
+                        "combined.md",
+                    )
+                    DemoFileIOHelper.write_str(combined_content, combined_md_path)
+                    
+                    # Reset error count on success
+                    st.session_state["page3_error_count"] = 0
+                    
+                    # Update status and state
+                    status.update(label="Article generation complete!", state="complete")
+                    st.session_state["page3_write_article_state"] = "prepare to show result"
+                else:
+                    raise FileNotFoundError("Article files not found")
+                    
+            except Exception as e:
+                # Update error count and time
+                st.session_state["page3_error_count"] += 1
+                st.session_state["page3_last_error_time"] = time.time()
+                
+                # If too many errors, abort
+                if st.session_state["page3_error_count"] >= 5:
+                    status.update(label="Too many errors occurred. Aborting article generation.", state="error")
+                    st.error("Article generation aborted due to multiple errors. Please try again.")
+                    st.session_state["page3_write_article_state"] = "not started"
+                    # Clean up any temporary files
+                    if "page3_current_working_dir" in st.session_state:
+                        try:
+                            article_dir = os.path.join(
+                                st.session_state["page3_current_working_dir"],
+                                st.session_state["page3_topic_name_truncated"]
+                            )
+                            if os.path.exists(article_dir):
+                                import shutil
+                                shutil.rmtree(article_dir)
+                        except Exception:
+                            pass
+                else:
+                    error_msg = str(e)
+                    if len(error_msg) > 100:  # Truncate very long error messages
+                        error_msg = error_msg[:97] + "..."
+                    status.update(label=f"Error during article generation: {error_msg}", state="error")
 
 
 def handle_prepare_to_show_result():
-    if st.session_state["page3_write_article_state"] == "prepare_to_show_result":
+    if st.session_state["page3_write_article_state"] == "prepare to show result":
         _, show_result_col, _ = st.columns([4, 3, 4])
         with show_result_col:
             if st.button("show final article"):

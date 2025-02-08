@@ -3,11 +3,43 @@ import os
 import demo_util
 import streamlit as st
 from demo_util import DemoFileIOHelper, DemoUIHelper
-from streamlit_card import card
 
 
 # set page config and display title
 def my_articles_page():
+    # Add custom CSS
+    st.markdown("""
+        <style>
+        /* Make delete button smaller */
+        button[data-testid="baseButton-secondary"]:has(div:contains("🗑️")) {
+            padding: 0px 8px;
+            height: 24px;
+            line-height: 24px;
+            margin-top: 4px;
+        }
+        /* Adjust caption size and spacing */
+        .st-emotion-cache-q8sbsg {
+            font-size: 0.8em;
+            color: #666;
+            margin-top: 8px;
+        }
+        /* Make article title buttons look like text */
+        button[data-testid="baseButton-secondary"]:not(:has(div:contains("🗑️"))) {
+            text-align: left;
+            background: none;
+            border: none;
+            padding: 4px 0;
+            margin: 0;
+            font-size: 1em;
+            color: #000;
+        }
+        button[data-testid="baseButton-secondary"]:not(:has(div:contains("🗑️"))):hover {
+            color: #00A0DC;
+            background: none;
+        }
+        </style>
+    """, unsafe_allow_html=True)
+
     with st.sidebar:
         _, return_button_col = st.columns([2, 5])
         with return_button_col:
@@ -28,73 +60,46 @@ def my_articles_page():
         )
 
     # if no feature demo selected, display all featured articles as info cards
-    def article_card_setup(column_to_add, card_title, article_name):
-        with column_to_add:
-            cleaned_article_title = article_name.replace("_", " ")
-            hasClicked = card(
-                title=" / ".join(card_title),
-                text=article_name.replace("_", " "),
-                image=DemoFileIOHelper.read_image_as_base64(
-                    os.path.join(demo_util.get_demo_dir(), "assets", "void.jpg")
-                ),
-                styles=DemoUIHelper.get_article_card_UI_style(boarder_color="#9AD8E1"),
-            )
-            if hasClicked:
+    def display_article_item(article_name):
+        cleaned_article_title = article_name.replace("_", " ")
+        article_path = os.path.join(demo_util.get_demo_dir(), "DEMO_WORKING_DIR", article_name)
+        creation_time = DemoFileIOHelper.get_latest_modification_time(article_path)
+        
+        col1, col2, col3 = st.columns([6, 3, 1])
+        with col1:
+            if st.button(cleaned_article_title, key=f"select_{article_name}"):
                 st.session_state["page2_selected_my_article"] = article_name
+                st.rerun()
+        with col2:
+            st.caption(creation_time)
+        with col3:
+            if st.button("🗑️", key=f"delete_{article_name}", help="Delete article", use_container_width=False):
+                import shutil
+                shutil.rmtree(article_path)
+                if "page2_user_articles_file_path_dict" in st.session_state:
+                    del st.session_state["page2_user_articles_file_path_dict"]
                 st.rerun()
 
     if "page2_selected_my_article" not in st.session_state:
-        # display article cards
-        my_article_columns = st.columns(3)
+        # display articles as a list
         if len(st.session_state["page2_user_articles_file_path_dict"]) > 0:
-            # get article names
-            article_names = sorted(
-                list(st.session_state["page2_user_articles_file_path_dict"].keys())
-            )
-            # configure pagination
-            pagination = st.container()
-            bottom_menu = st.columns((1, 4, 1, 1, 1))[1:-1]
-            with bottom_menu[2]:
-                batch_size = st.selectbox("Page Size", options=[24, 48, 72])
-            with bottom_menu[1]:
-                total_pages = (
-                    int(len(article_names) / batch_size)
-                    if int(len(article_names) / batch_size) > 0
-                    else 1
-                )
-                current_page = st.number_input(
-                    "Page", min_value=1, max_value=total_pages, step=1
-                )
-            with bottom_menu[0]:
-                st.markdown(f"Page **{current_page}** of **{total_pages}** ")
-            # show article cards
-            with pagination:
-                my_article_count = 0
-                start_index = (current_page - 1) * batch_size
-                end_index = min(current_page * batch_size, len(article_names))
-                for article_name in article_names[start_index:end_index]:
-                    column_to_add = my_article_columns[my_article_count % 3]
-                    my_article_count += 1
-                    article_card_setup(
-                        column_to_add=column_to_add,
-                        card_title=["My Article"],
-                        article_name=article_name,
-                    )
+            st.markdown("### Your Articles")
+            
+            # Get articles with their creation times
+            articles_with_times = []
+            for article_name in st.session_state["page2_user_articles_file_path_dict"].keys():
+                article_path = os.path.join(demo_util.get_demo_dir(), "DEMO_WORKING_DIR", article_name)
+                creation_time = DemoFileIOHelper.get_latest_modification_time(article_path)
+                articles_with_times.append((article_name, creation_time))
+            
+            # Sort by creation time, newest first
+            articles_with_times.sort(key=lambda x: x[1], reverse=True)
+            
+            # Display sorted articles
+            for article_name, _ in articles_with_times:
+                display_article_item(article_name)
         else:
-            with my_article_columns[0]:
-                hasClicked = card(
-                    title="Get started",
-                    text="Start your first research!",
-                    image=DemoFileIOHelper.read_image_as_base64(
-                        os.path.join(demo_util.get_demo_dir(), "assets", "void.jpg")
-                    ),
-                    styles=DemoUIHelper.get_article_card_UI_style(),
-                )
-                if hasClicked:
-                    st.session_state.selected_page = 1
-                    st.session_state["manual_selection_override"] = True
-                    st.session_state["rerun_requested"] = True
-                    st.rerun()
+            st.info("No articles yet. Create your first article!")
     else:
         selected_article_name = st.session_state["page2_selected_my_article"]
         selected_article_file_path_dict = st.session_state[

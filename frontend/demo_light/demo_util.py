@@ -215,6 +215,19 @@ class DemoFileIOHelper:
             return article_data
         return None
 
+    @staticmethod
+    def write_str(content: str, file_path: str):
+        """
+        Writes a string to a text file.
+
+        Args:
+            content (str): The string content to write
+            file_path (str): The path to the file to write to
+        """
+        os.makedirs(os.path.dirname(file_path), exist_ok=True)
+        with open(file_path, 'w', encoding='utf-8') as f:
+            f.write(content)
+
 
 class DemoTextProcessingHelper:
     @staticmethod
@@ -432,6 +445,14 @@ class DemoUIHelper:
 
     @staticmethod
     def article_markdown_to_html(article_title, article_content):
+        # Remove any duplicate references section from the content
+        content_parts = article_content.split("\n## References")
+        main_content = content_parts[0]
+        
+        # Add the references section back if it exists
+        if len(content_parts) > 1:
+            main_content += "\n## References" + content_parts[-1]
+
         return f"""
         <html>
             <head>
@@ -448,8 +469,8 @@ class DemoUIHelper:
                     <h1>{article_title.replace('_', ' ')}</h1>
                 </div>
                 <h2>Table of Contents</h2>
-                {DemoTextProcessingHelper.generate_html_toc(article_content)}
-                {markdown.markdown(article_content)}
+                {DemoTextProcessingHelper.generate_html_toc(main_content)}
+                {markdown.markdown(main_content)}
             </body>
         </html>
         """
