@@ -1,5 +1,6 @@
 import os
 import time
+import re
 
 import demo_util
 import streamlit as st
@@ -129,11 +130,19 @@ def handle_final_writing():
                 article_text = DemoFileIOHelper.read_txt_file(polished_article_path)
                 url_to_info = DemoFileIOHelper.read_json_file(url_to_info_path)
                 
+                # Add spaces between adjacent citations (e.g., [1][2] -> [1] [2])
+                article_text = re.sub(r'\](\[\d+\])', r'] \1', article_text)
+                
                 # Generate bibliography in markdown format
                 bibliography = DemoTextProcessingHelper.construct_bibliography_from_url_to_info(url_to_info)
                 
-                # Combine article and bibliography
-                combined_content = f"{article_text}\n\n# References\n\n{bibliography}"
+                # Check if article already has a References section
+                if "# References" not in article_text:
+                    combined_content = f"{article_text}\n\n# References\n\n{bibliography}"
+                else:
+                    # Replace existing References section
+                    sections = article_text.split("# References")
+                    combined_content = f"{sections[0].rstrip()}\n\n# References\n\n{bibliography}"
                 
                 # Write combined markdown file
                 combined_md_path = os.path.join(article_dir, "storm_gen_article_full_with_ref.md")

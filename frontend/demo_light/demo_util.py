@@ -19,7 +19,7 @@ from knowledge_storm import (
     STORMWikiLMConfigs,
 )
 from knowledge_storm.lm import OpenAIModel
-from knowledge_storm.rm import YouRM
+from knowledge_storm.rm import SerperRM
 from knowledge_storm.storm_wiki.modules.callback import BaseCallbackHandler
 from knowledge_storm.utils import truncate_filename
 from stoc import stoc
@@ -614,12 +614,25 @@ def set_storm_runner():
         retrieve_top_k=3,
     )
 
-    ydc_api_key = os.environ.get("YDC_API_KEY")
-    if not ydc_api_key:
-        st.error("YDC_API_KEY environment variable is not set")
+    serper_api_key = os.environ.get("SERPER_API_KEY")
+    if not serper_api_key:
+        st.error("SERPER_API_KEY environment variable is not set")
         st.stop()
 
-    rm = YouRM(ydc_api_key=ydc_api_key, k=engine_args.search_top_k)
+    rm = SerperRM(
+        k=3,
+        min_char_count=150,
+        snippet_chunk_size=1000,
+        webpage_helper_max_threads=10,
+        ENABLE_EXTRA_SNIPPET_EXTRACTION=True,
+        query_params={
+            "num": 3,
+            "autocorrect": True,
+            "page": 1,
+            "engine": "google",
+            "type": "search"
+        }
+    )
 
     runner = STORMWikiRunner(engine_args, lm_configs, rm)
     st.session_state["runner"] = runner
