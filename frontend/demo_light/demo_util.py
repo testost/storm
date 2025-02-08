@@ -580,19 +580,20 @@ def set_storm_runner():
         os.makedirs(current_working_dir)
 
     # configure STORM runner
-    llm_configs = STORMWikiLMConfigs()
+    lm_configs = STORMWikiLMConfigs()
     openai_api_key = os.environ.get("OPENAI_API_KEY")
     if not openai_api_key:
         st.error("OPENAI_API_KEY environment variable is not set")
         st.stop()
 
-    llm_configs.init_openai_model(
+    lm_configs.init_openai_model(
         openai_api_key=openai_api_key,
-        openai_type="openai",
-        api_base="https://api.openai.com/v1",
-        api_version="2023-05-15",
+        azure_api_key="",  # Required parameter but not used for OpenAI
+        openai_type="openai",  # Explicitly use OpenAI
+        temperature=1.0,
+        top_p=0.9,
     )
-    llm_configs.set_question_asker_lm(
+    lm_configs.set_question_asker_lm(
         OpenAIModel(
             model="gpt-4-1106-preview",
             api_key=openai_api_key,
@@ -604,8 +605,6 @@ def set_storm_runner():
     )
     engine_args = STORMWikiRunnerArguments(
         output_dir=current_working_dir,
-        generate_combined_output=True,  # Enable combined output for Streamlit
-        combined_output_format='markdown',  # Use markdown format
         max_thread_num=10,
         max_conv_turn=3,
         max_perspective=3,
@@ -622,7 +621,7 @@ def set_storm_runner():
 
     rm = YouRM(ydc_api_key=ydc_api_key, k=engine_args.search_top_k)
 
-    runner = STORMWikiRunner(engine_args, llm_configs, rm)
+    runner = STORMWikiRunner(engine_args, lm_configs, rm)
     st.session_state["runner"] = runner
 
 

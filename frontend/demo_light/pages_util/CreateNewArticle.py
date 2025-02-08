@@ -117,6 +117,29 @@ def handle_final_writing():
             # finish the session
             st.session_state["runner"].post_run()
 
+            # Generate combined markdown file with references
+            article_dir = os.path.join(
+                st.session_state["page3_current_working_dir"],
+                st.session_state["page3_topic_name_truncated"]
+            )
+            polished_article_path = os.path.join(article_dir, "storm_gen_article_polished.txt")
+            url_to_info_path = os.path.join(article_dir, "url_to_info.json")
+            
+            if os.path.exists(polished_article_path) and os.path.exists(url_to_info_path):
+                article_text = DemoFileIOHelper.read_txt_file(polished_article_path)
+                url_to_info = DemoFileIOHelper.read_json_file(url_to_info_path)
+                
+                # Generate bibliography in markdown format
+                bibliography = DemoTextProcessingHelper.construct_bibliography_from_url_to_info(url_to_info)
+                
+                # Combine article and bibliography
+                combined_content = f"{article_text}\n\n# References\n\n{bibliography}"
+                
+                # Write combined markdown file
+                combined_md_path = os.path.join(article_dir, "storm_gen_article_full_with_ref.md")
+                with open(combined_md_path, "w") as f:
+                    f.write(combined_content)
+
             # update status bar
             st.session_state["page3_write_article_state"] = "prepare_to_show_result"
             status.update(label="information snythesis complete!", state="complete")
