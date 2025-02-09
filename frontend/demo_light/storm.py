@@ -21,8 +21,8 @@ def main():
         if not os.environ.get("OPENAI_API_KEY"):
             st.error("OPENAI_API_KEY environment variable is not set")
             st.stop()
-        if not os.environ.get("YDC_API_KEY"):
-            st.error("YDC_API_KEY environment variable is not set")
+        if not os.environ.get("SERPER_API_KEY"):
+            st.error("SERPER_API_KEY environment variable is not set")
             st.stop()
 
     # initialize session_state
