@@ -2,6 +2,7 @@ import pytest
 from typing import List
 import time
 import dspy
+import os
 from knowledge_storm.storm_wiki.modules.claim_extraction import ClaimExtractor
 
 @pytest.fixture
@@ -53,7 +54,7 @@ def large_article_text():
 @pytest.fixture(scope="session", autouse=True)
 def dspy_settings():
     """Global DSPy configuration for tests"""
-    lm = dspy.LM("openai/gpt-3.5-turbo")
+    lm = dspy.LM("gpt-4o-mini")
     dspy.configure(lm=lm)
 
 @pytest.fixture
@@ -140,17 +141,157 @@ def test_claim_extractor_parallel_performance(claim_extractor, large_article_tex
 
 def test_claim_extractor_no_lm_error():
     """Test that ClaimExtractor raises appropriate error when no LM is configured."""
-    # Save current LM configuration
+    # Save current LM configuration and environment
     original_lm = dspy.settings.lm
+    original_api_key = os.getenv("OPENAI_API_KEY")
+    original_litellm_key = os.getenv("LITELLM_API_KEY")
     
     try:
-        # Clear DSPy settings
+        # Clear DSPy settings and environment
         dspy.settings.lm = None
+        for key in ["OPENAI_API_KEY", "LITELLM_API_KEY"]:
+            if key in os.environ:
+                del os.environ[key]
+        
+        # Clear any cached LM instance
+        if hasattr(dspy, '_lm_instance'):
+            delattr(dspy, '_lm_instance')
         
         # Verify error is raised
         with pytest.raises(ValueError) as exc_info:
-            ClaimExtractor()
+            extractor = ClaimExtractor()
+            
         assert "No language model configured" in str(exc_info.value)
+    
     finally:
-        # Restore original settings
+        # Restore original configuration
         dspy.settings.lm = original_lm
+        if original_api_key:
+            os.environ["OPENAI_API_KEY"] = original_api_key
+        if original_litellm_key:
+            os.environ["LITELLM_API_KEY"] = original_litellm_key
+
+def test_claim_extractor_with_research_article(claim_extractor):
+    """Test that ClaimExtractor can handle real research articles."""
+    with open("knowledge_storm/tests/test_data/sample_research_article.md", "r") as f:
+        article_text = f.read()
+    
+    claims = claim_extractor.extract_claims(article_text)
+    
+    # Verify we got claims from different sections
+    assert len(claims) >= 10  # Should find multiple claims per section
+    
+    # Verify market size claims
+    market_claims = [c for c in claims if "billion" in c.text.lower()]
+    assert len(market_claims) >= 2
+    assert any(
+        "$12.5 billion" in c.text and "2024" in c.text
+        for c in market_claims
+    )
+    assert any(
+        "$50 billion" in c.text and "2028" in c.text
+        for c in market_claims
+    )
+    
+    # Verify percentage claims
+    percentage_claims = [c for c in claims if "%" in c.text]
+    assert len(percentage_claims) >= 5
+    assert any(
+        "32%" in c.text and "CAGR" in c.text
+        for c in percentage_claims
+    )
+    assert any(
+        "55%" in c.text and "productivity" in c.text.lower()
+        for c in percentage_claims
+    )
+    
+    # Verify claims have proper context
+    for claim in claims:
+        assert claim.context in [
+            "Market Growth and Adoption",
+            "Technical Capabilities",
+            "Developer Impact",
+            "Challenges and Limitations",
+            "Future Trends"
+        ]
+        assert claim.confidence > 0.7  # All claims should be fairly confident
+        assert len(claim.source_text) > 0  # Should have source text
+
+def test_claim_extractor_with_demo_articles(claim_extractor):
+    """Test ClaimExtractor with all articles in DEMO_WORKING_DIR."""
+    demo_dir = "/home/arsi/git/storm/frontend/demo_light/DEMO_WORKING_DIR"
+    
+    # Stats for reporting
+    total_articles = 0
+    total_claims = 0
+    articles_with_no_claims = []
+    articles_with_errors = []
+    
+    # Process each subdirectory
+    for topic_dir in os.listdir(demo_dir):
+        full_topic_dir = os.path.join(demo_dir, topic_dir)
+        if not os.path.isdir(full_topic_dir):
+            continue
+            
+        # Look for article files
+        article_files = [
+            f for f in os.listdir(full_topic_dir)
+            if f.endswith(('.md', '.txt')) and 'article' in f.lower()
+        ]
+        
+        for article_file in article_files:
+            total_articles += 1
+            article_path = os.path.join(full_topic_dir, article_file)
+            
+            try:
+                with open(article_path, 'r', encoding='utf-8') as f:
+                    content = f.read()
+                
+                print(f"\n=== Processing article: {article_file} ===")
+                claims = claim_extractor.extract_claims(content)
+                
+                if not claims:
+                    articles_with_no_claims.append(article_file)
+                    print(f"Warning: No claims found in {article_file}")
+                else:
+                    total_claims += len(claims)
+                    print(f"\nFound {len(claims)} claims:")
+                    
+                    # Print and verify each claim
+                    for i, claim in enumerate(claims, 1):
+                        print(f"\nClaim {i}:")
+                        print(f"Text: {claim.text}")
+                        print(f"Confidence: {claim.confidence:.2f}")
+                        print(f"Context: {claim.context}")
+                        print(f"Source: {claim.source_text}")
+                        
+                        # Verify claim properties
+                        assert isinstance(claim.text, str) and len(claim.text) > 0
+                        assert isinstance(claim.confidence, (int, float)) and 0 <= claim.confidence <= 1
+                        assert isinstance(claim.source_text, str) and len(claim.source_text) > 0
+                        assert isinstance(claim.context, str) and len(claim.context) > 0
+                        
+            except Exception as e:
+                articles_with_errors.append((article_file, str(e)))
+                print(f"Error processing {article_file}: {str(e)}")
+    
+    # Print summary
+    print("\n=== Claim Extraction Summary ===")
+    print(f"Total articles processed: {total_articles}")
+    print(f"Total claims found: {total_claims}")
+    print(f"Average claims per article: {total_claims/total_articles if total_articles else 0:.1f}")
+    
+    if articles_with_no_claims:
+        print("\nArticles with no claims:")
+        for article in articles_with_no_claims:
+            print(f"- {article}")
+    
+    if articles_with_errors:
+        print("\nArticles with errors:")
+        for article, error in articles_with_errors:
+            print(f"- {article}: {error}")
+    
+    # Basic assertions
+    assert total_articles > 0, "No articles were processed"
+    assert total_claims > 0, "No claims were found in any article"
+    assert len(articles_with_errors) == 0, f"{len(articles_with_errors)} articles had processing errors"

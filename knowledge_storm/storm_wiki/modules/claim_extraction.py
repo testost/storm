@@ -6,6 +6,7 @@ from dspy.signatures.field import InputField, OutputField
 import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from functools import partial
+import os
 
 @dataclass
 class Claim:
@@ -19,7 +20,7 @@ class ExtractClaims(Signature):
     
     Extract verifiable claims from the given text. A verifiable claim:
     1. Makes a specific, measurable statement
-    2. Often includes numbers, dates, or concrete facts
+    2. Often includes numbers, dates, statistics, or concrete facts
     3. Can be fact-checked using reliable sources
     4. Has clear context and scope
     
@@ -28,11 +29,31 @@ class ExtractClaims(Signature):
     - confidence: Float between 0-1 indicating confidence in claim verifiability
     - source_text: Original sentence containing the claim
     
-    IMPORTANT:
-    - Focus on extracting numerical claims (e.g., "42% increase", "1.5x growth")
-    - Assign high confidence (>0.8) to claims with specific numbers
-    - Include the full context around the number in claim_text
-    - Ignore vague statements without concrete metrics
+    IMPORTANT GUIDELINES:
+    1. Aggressively extract ANY statement that contains:
+       - Numbers (e.g., "70% of users", "$50 million in revenue")
+       - Dates (e.g., "by 2025", "since 2020")
+       - Statistics (e.g., "doubled in size", "grew by half")
+       - Rankings (e.g., "first company to...", "largest in the industry")
+       - Specific measurements (e.g., "reduced by 3 hours", "increased 2x")
+    
+    2. Look for claims about:
+       - Market sizes and growth
+       - User/customer numbers
+       - Performance metrics
+       - Industry rankings
+       - Timeline commitments
+       - Regulatory requirements
+       - Technical specifications
+       - Historical events
+    
+    3. Confidence scoring:
+       - 0.9-1.0: Precise numerical claims with clear context
+       - 0.7-0.9: Specific claims with some qualifiers
+       - 0.5-0.7: Claims that are measurable but less precise
+       - <0.5: Vague or difficult to verify claims (exclude these)
+    
+    4. Extract multiple claims from the same sentence if present
     """
     text: str = InputField(desc="Text to extract claims from")
     claims: List[dict] = OutputField(desc="List of dicts with claim_text, confidence, source_text")
@@ -46,8 +67,14 @@ class ClaimExtractor:
             lm: Optional language model instance. If not provided, uses global DSPy settings.
         """
         self.max_workers = max_workers
+        
+        # Validate LM configuration before doing anything else
         self._validate_lm_config(lm)
         
+        # Configure default model if none provided
+        if not lm:
+            lm = dspy.LM("gpt-4o-mini")
+            
         # Configure DSPy predictor
         self.extract = dspy.Predict(ExtractClaims)
     
@@ -63,7 +90,7 @@ class ClaimExtractor:
         try:
             if lm:
                 dspy.settings.configure(lm=lm)
-            elif not dspy.settings.lm:
+            elif not dspy.settings.lm and not os.getenv("OPENAI_API_KEY"):
                 raise ValueError(
                     "No language model configured. Either:\n"
                     "1. Call dspy.configure(lm=...) globally first\n"
@@ -92,7 +119,7 @@ class ClaimExtractor:
                 if current_section["text"]:
                     sections.append(current_section)
                 # Handle malformed headers (no space after #)
-                header = line[1:].strip() if line[1:].strip() else "Default Section"
+                header = line.lstrip("#").strip() if line.lstrip("#").strip() else "Default Section"
                 current_section = {
                     "heading": header,
                     "text": []
@@ -133,6 +160,7 @@ class ClaimExtractor:
             print(f"Extraction result: {result}")
             
             claims = []
+            # Claims are now returned directly as a list of dictionaries
             for claim_dict in result.claims:
                 claims.append(Claim(
                     text=claim_dict["claim_text"],
