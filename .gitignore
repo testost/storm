@@ -26,3 +26,5 @@ secrets.toml
 */assertion.log
 *results/
 .venv/
+TODO.md
+DEMO_WORKING_DIR/*

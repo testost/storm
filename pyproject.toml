@@ -1,0 +1,37 @@
+[tool.poetry]
+name = "storm"
+version = "0.1.0"
+description = "STORM Wiki Article Generator"
+authors = ["Your Name <your.email@example.com>"]
+packages = [
+    { include = "knowledge_storm" }
+]
+
+[tool.poetry.dependencies]
+python = "^3.10"
+dspy-ai = "2.4.9"
+wikipedia = "1.4.0"
+sentence-transformers = "*"
+toml = "*"
+langchain-text-splitters = "*"
+trafilatura = "*"
+langchain-huggingface = "*"
+qdrant-client = "*"
+langchain-qdrant = "*"
+numpy = "1.26.4"
+litellm = "1.59.3"
+diskcache = "*"
+streamlit = "1.31.1"
+streamlit-card = "*"
+markdown = "*"
+unidecode = "*"
+extra-streamlit-components = "0.1.60"
+streamlit-extras = "*"
+deprecation = "2.1.0"
+st-pages = "0.4.5"
+streamlit-float = "*"
+streamlit-option-menu = "*"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
