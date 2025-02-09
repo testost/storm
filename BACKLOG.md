@@ -61,18 +61,18 @@
    - Document Finnish-specific challenges (morphology, compounds)
 
 2. LLM Model Benchmarking
-   - Set up controlled test environment
-   - Compare GPT-3.5 vs GPT-4 performance
-   - Measure metrics:
-     * Claims found per article
-     * Confidence scores
-     * Processing time
+   - ✅ Set up controlled test environment
+   - ✅ Compare GPT-3.5 vs GPT-4o-mini performance
+   - ✅ Measure metrics:
+     * ✅ Claims found per article (27.4 vs ~20)
+     * ✅ Confidence scores (improved precision)
+     * ✅ Processing time
      * Cost per article
-     * Language-specific accuracy
+     * ✅ Language-specific accuracy
 
 3. Finnish Language Optimization
-   - Add Finnish-specific claim patterns
-   - Optimize section parsing for Finnish text structure
+   - ✅ Add Finnish-specific claim patterns
+   - ✅ Optimize section parsing for Finnish text structure
    - Create Finnish test cases for common claim types
    - Consider Finnish language models (if available)
 
