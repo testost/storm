@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Added CounterResearcher module for finding and validating counter-evidence to claims
+- Added source credibility scoring based on URL type and domain
+- Added comprehensive test suite for CounterResearcher functionality
 - Added debug logging in ClaimExtractor to help diagnose section parsing and claim extraction issues
 - Enhanced claim extraction with more aggressive pattern matching
 - Improved confidence scoring for claims (0.9 for precise numerical claims, 0.8 for specific claims, 0.7 for measurable claims)

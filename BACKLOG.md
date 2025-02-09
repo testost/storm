@@ -14,6 +14,8 @@
    - Consider open-source alternatives like Llama 2
 
 3. Add claim validation rules
+   - ✅ Added counter-evidence research for claim validation
+   - ✅ Added source credibility scoring
    - Verify numerical claims are within reasonable ranges
    - Check for contradictory claims in the same document
    - Validate dates and timelines for consistency
@@ -113,3 +115,48 @@
    - Compare model effectiveness
    - Generate cost reports
    - Monitor error rates by language
+
+## Counter-Evidence Research
+
+### High Priority
+1. Improve source validation
+   - Add support for academic paper citations
+   - Validate source publication dates
+   - Check source reputation and citations
+
+2. Enhance counter-evidence ranking
+   - Consider source recency in ranking
+   - Weight evidence by source expertise
+   - Track evidence consensus patterns
+
+3. Optimize retrieval performance
+   - Implement caching for common queries
+   - Add parallel processing for multiple claims
+   - Optimize token usage in prompts
+
+### Medium Priority
+1. Expand evidence sources
+   - Add support for preprint servers
+   - Include expert opinions from verified sources
+   - Consider social media with high credibility
+
+2. Improve analysis accuracy
+   - Fine-tune confidence thresholds
+   - Add support for nuanced disagreements
+   - Handle partial counter-evidence
+
+3. Add visualization features
+   - Show evidence strength distribution
+   - Visualize source credibility metrics
+   - Display claim-evidence relationships
+
+### Low Priority
+1. Add collaboration features
+   - Enable expert review of counter-evidence
+   - Allow user feedback on source credibility
+   - Support community-curated sources
+
+2. Enhance reporting
+   - Generate counter-evidence summaries
+   - Track source reliability over time
+   - Report evidence quality metrics
